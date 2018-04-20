@@ -42,6 +42,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Random;
+import com.applozic.mobicomkit.api.notification.MobiComPushReceiver
 
 @SuppressLint("NewApi")
 public class GCMIntentService extends GcmListenerService implements PushConstants {
@@ -66,8 +67,11 @@ public class GCMIntentService extends GcmListenerService implements PushConstant
     @Override
     public void onMessageReceived(String from, Bundle extras) {
         Log.d(LOG_TAG, "onMessage - from: " + from);
-
-        if (extras != null && isAvailableSender(from)) {
+        if(extras != null && MobiComPushReceiver.isMobiComPushNotification(extras)){
+             Log.i("GCMIntent", "Applozic notification processing...");
+            MobiComPushReceiver.processMessageAsync(this, extras);
+            return;
+        } else if (extras != null && isAvailableSender(from)) {
             Context applicationContext = getApplicationContext();
 
             SharedPreferences prefs = applicationContext.getSharedPreferences(PushPlugin.COM_ADOBE_PHONEGAP_PUSH, Context.MODE_PRIVATE);

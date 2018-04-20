@@ -9,6 +9,7 @@
 #import "AppDelegate+notification.h"
 #import "PushPlugin.h"
 #import <objc/runtime.h>
+#import <Applozic/Applozic.h>
 
 static char launchNotificationKey;
 static char coldstartKey;
@@ -89,6 +90,32 @@ static char coldstartKey;
 - (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken {
     PushPlugin *pushHandler = [self getCommandInstance:@"PushNotification"];
     [pushHandler didRegisterForRemoteNotificationsWithDeviceToken:deviceToken];
+    const unsigned *tokenBytes = [deviceToken bytes];
+
+    NSString *hexToken = [NSString stringWithFormat:@"%08x%08x%08x%08x%08x%08x%08x%08x",
+                          ntohl(tokenBytes[0]), ntohl(tokenBytes[1]), ntohl(tokenBytes[2]),
+                          ntohl(tokenBytes[3]), ntohl(tokenBytes[4]), ntohl(tokenBytes[5]),
+                          ntohl(tokenBytes[6]), ntohl(tokenBytes[7])];
+
+    NSString *apnDeviceToken = hexToken;
+    NSLog(@"APN_DEVICE_TOKEN :: %@", hexToken);
+
+    if ([[ALUserDefaultsHandler getApnDeviceToken] isEqualToString:apnDeviceToken])
+    {
+        return;
+    }
+
+    ALRegisterUserClientService *registerUserClientService = [[ALRegisterUserClientService alloc] init];
+    [registerUserClientService updateApnDeviceTokenWithCompletion:apnDeviceToken withCompletion:^(ALRegistrationResponse *rResponse, NSError *error) {
+
+        if (error)
+        {
+            NSLog(@"REGISTRATION ERROR :: %@",error.description);
+            return;
+        }
+
+        NSLog(@"Registration response from server : %@", rResponse);
+    }];
 }
 
 - (void)application:(UIApplication *)application didFailToRegisterForRemoteNotificationsWithError:(NSError *)error {
@@ -98,15 +125,25 @@ static char coldstartKey;
 
 - (void) application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo {
     NSLog(@"clicked on the shade");
-    PushPlugin *pushHandler = [self getCommandInstance:@"PushNotification"];
-    pushHandler.notificationMessage = userInfo;
-    pushHandler.isInline = NO;
-    [pushHandler notificationReceived];
+      ALPushNotificationService *pushNotificationService = [[ALPushNotificationService alloc] init];
+     if([pushNotificationService isApplozicNotification:userInfo]){
+         [pushNotificationService notificationArrivedToApplication:application withDictionary:userInfo];
+     }else{
+      PushPlugin *pushHandler = [self getCommandInstance:@"PushNotification"];
+      pushHandler.notificationMessage = userInfo;
+      pushHandler.isInline = NO;
+      [pushHandler notificationReceived];
+    }
 }
 
 - (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo fetchCompletionHandler:(void (^)(UIBackgroundFetchResult))completionHandler {
     NSLog(@"didReceiveNotification with fetchCompletionHandler");
 
+      ALPushNotificationService *pushNotificationService = [[ALPushNotificationService alloc] init];
+         if([pushNotificationService isApplozicNotification:userInfo]){
+           [pushNotificationService notificationArrivedToApplication:application withDictionary:userInfo];
+           completionHandler(UIBackgroundFetchResultNewData);
+         }else{
     // app is in the foreground so call notification callback
     if (application.applicationState == UIApplicationStateActive) {
         NSLog(@"app active");
@@ -165,6 +202,7 @@ static char coldstartKey;
             completionHandler(UIBackgroundFetchResultNewData);
         }
     }
+  }
 }
 
 - (BOOL)userHasRemoteNotificationsEnabled {
@@ -245,6 +283,24 @@ forRemoteNotification: (NSDictionary *) notification completionHandler: (void (^
 
         [pushHandler performSelectorOnMainThread:@selector(notificationReceived) withObject:pushHandler waitUntilDone:NO];
     }
+}
+
+- (void)applicationDidEnterBackground:(UIApplication *)application {
+
+    NSLog(@"APP_ENTER_IN_BACKGROUND");
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"APP_ENTER_IN_BACKGROUND" object:nil];
+}
+
+- (void)applicationWillEnterForeground:(UIApplication *)application {
+    [ALPushNotificationService applicationEntersForeground];
+
+    NSLog(@"APP_ENTER_IN_FOREGROUND");
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"APP_ENTER_IN_FOREGROUND" object:nil];
+    [application setApplicationIconBadgeNumber:0];
+}
+
+- (void)applicationWillTerminate:(UIApplication *)application {
+    [[ALDBHandler sharedInstance] saveContext];
 }
 
 // The accessors use an Associative Reference since you can't define a iVar in a category

@@ -9,6 +9,10 @@ import android.util.Log;
 
 import com.google.android.gms.gcm.GoogleCloudMessaging;
 import com.google.android.gms.iid.InstanceID;
+import com.applozic.mobicomkit.Applozic;
+import com.applozic.mobicomkit.api.account.register.RegisterUserClientService;
+import com.applozic.mobicomkit.api.account.register.RegistrationResponse;
+import com.applozic.mobicomkit.api.account.user.MobiComUserPreference;
 
 import java.io.IOException;
 
@@ -30,6 +34,14 @@ public class RegistrationIntentService extends IntentService implements PushCons
                     GoogleCloudMessaging.INSTANCE_ID_SCOPE, null);
             PushPlugin.setRegistrationID(token);
             Log.i(LOG_TAG, "new GCM Registration Token: " + token);
+        Applozic.getInstance(this).setDeviceRegistrationId(token);
+       if (MobiComUserPreference.getInstance(this).isRegistered()) {
+           try {
+               RegistrationResponse registrationResponse = new RegisterUserClientService(this).updatePushNotificationId(token);
+           } catch (Exception e) {
+               e.printStackTrace();
+           }
+       }
 
         } catch (Exception e) {
             Log.d(LOG_TAG, "Failed to complete token refresh", e);
