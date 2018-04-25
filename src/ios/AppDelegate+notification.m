@@ -11,6 +11,9 @@
 #import <objc/runtime.h>
 #import <Applozic/Applozic.h>
 
+#define SYSTEM_VERSION_GREATER_THAN_OR_EQUAL_TO(v)  ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] != NSOrderedAscending)
+#define SYSTEM_VERSION_LESS_THAN(v) ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] == NSOrderedAscending)
+
 static char launchNotificationKey;
 static char coldstartKey;
 
@@ -87,11 +90,38 @@ static char coldstartKey;
     }
 }
 
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
+{
+    [ALRegisterUserClientService isAppUpdated];
+    [self registerForNotification];
+    ALAppLocalNotifications *localNotification = [ALAppLocalNotifications appLocalNotificationHandler];
+    [localNotification dataConnectionNotificationHandler];
+
+    NSLog(@"launchOptions: %@", launchOptions);
+
+    if (launchOptions != nil)
+    {
+        NSDictionary *dictionary = [launchOptions objectForKey:UIApplicationLaunchOptionsRemoteNotificationKey];
+        if (dictionary != nil)
+        {
+            NSLog(@"Launched from push notification: %@", dictionary);
+            ALPushNotificationService *pushNotificationService = [[ALPushNotificationService alloc] init];
+            BOOL applozicProcessed = [pushNotificationService processPushNotification:dictionary
+                                                                             updateUI:[NSNumber numberWithInt:APP_STATE_INACTIVE]];
+
+            if (!applozicProcessed) {
+                //Note: notification for app
+            }
+        }
+    }
+    return [super application:application didFinishLaunchingWithOptions:launchOptions];
+}
 - (void)application:(UIApplication *)application didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken {
     PushPlugin *pushHandler = [self getCommandInstance:@"PushNotification"];
     [pushHandler didRegisterForRemoteNotificationsWithDeviceToken:deviceToken];
-    const unsigned *tokenBytes = [deviceToken bytes];
+    NSLog(@"DEVICE_TOKEN :: %@", deviceToken);
 
+    const unsigned *tokenBytes = [deviceToken bytes];
     NSString *hexToken = [NSString stringWithFormat:@"%08x%08x%08x%08x%08x%08x%08x%08x",
                           ntohl(tokenBytes[0]), ntohl(tokenBytes[1]), ntohl(tokenBytes[2]),
                           ntohl(tokenBytes[3]), ntohl(tokenBytes[4]), ntohl(tokenBytes[5]),
@@ -329,6 +359,37 @@ forRemoteNotification: (NSDictionary *) notification completionHandler: (void (^
 {
     self.launchNotification = nil; // clear the association and release the object
     self.coldstart = nil;
+}
+
+-(void)registerForNotification
+{
+    if(SYSTEM_VERSION_LESS_THAN(@"10.0"))
+    {
+        [[UIApplication sharedApplication] registerUserNotificationSettings:[UIUserNotificationSettings settingsForTypes:(UIUserNotificationTypeSound |    UIUserNotificationTypeAlert | UIUserNotificationTypeBadge) categories:nil]];
+
+        [[UIApplication sharedApplication] registerForRemoteNotifications];
+    }
+    else
+    {
+        UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+        center.delegate = self;
+        [center requestAuthorizationWithOptions:(UNAuthorizationOptionSound | UNAuthorizationOptionAlert | UNAuthorizationOptionBadge) completionHandler:^(BOOL granted, NSError * _Nullable error)
+         {
+             if(!error)
+             {
+                 dispatch_async(dispatch_get_main_queue(), ^ {
+                     [[UIApplication sharedApplication] registerForRemoteNotifications];  // required to get the app to do anything at all about push notifications
+                     NSLog(@"Push registration success." );
+                 });
+             }
+             else
+             {
+                 NSLog(@"Push registration FAILED" );
+                 NSLog(@"ERROR: %@ - %@", error.localizedFailureReason, error.localizedDescription );
+                 NSLog(@"SUGGESTIONS: %@ - %@", error.localizedRecoveryOptions, error.localizedRecoverySuggestion );
+             }
+         }];
+    }
 }
 
 @end
