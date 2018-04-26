@@ -42,7 +42,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Random;
-import com.applozic.mobicomkit.api.notification.MobiComPushReceiver
+import com.applozic.mobicomkit.api.notification.MobiComPushReceiver;
 
 @SuppressLint("NewApi")
 public class GCMIntentService extends GcmListenerService implements PushConstants {
